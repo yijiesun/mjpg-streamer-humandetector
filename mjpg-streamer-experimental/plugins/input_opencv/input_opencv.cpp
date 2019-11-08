@@ -27,19 +27,19 @@
 #include "input_opencv.h"
 
 #include "opencv2/opencv.hpp"
-#include "fff/fff.h"
 
 #include "dpm/config.h"
 #include <fstream>
 #include <dirent.h>
-
+#define USE_V4L2_NOT_CVCAPTRUE
 
 using namespace cv;
 using namespace std;
 
-int IMG_WID_;
-int IMG_HGT_;
-Mat src, dst;
+int WIDTH_;
+int HEIGHT_;
+
+Mat rgb;
 
 int frame_cnt;
 float Elapsed_Time_One_Frame;
@@ -47,8 +47,7 @@ bool quit;
 vector<FLOATS_7>	detections_full_current;
 
 pthread_mutex_t mutex;
-VideoCapture v_capture;
-VideoWriter outputVideo;
+
 FastDPM	PM("/home/pi/work/mjpg-streamer-master/mjpg-streamer-experimental/plugins/input_opencv/dpm/config.txt");
 
 
@@ -99,7 +98,7 @@ void worker_cleanup(void *);
 static char plugin_name[] = INPUT_PLUGIN_NAME;
 
 static void null_filter(void* filter_ctx, Mat &src, Mat &dst) {
-    dst = src;
+    //dst = src;
 }
 
 static void help() {
@@ -274,9 +273,10 @@ int input_init(input_parameter *param, int plugin_no)
 
     IPRINT("device........... : %s\n", device);
     IPRINT("Desired Resolution: %i x %i\n", width, height);
-    IMG_WID_ = width;
-	IMG_HGT_ = height;
+    WIDTH_ = width;
+	HEIGHT_ = height;
     // need to allocate a VideoCapture object: default device is 0
+#ifndef USE_V4L2_NOT_CVCAPTRUE
     try {
         if (!strcasecmp(device, "default")) {
             pctx->capture.open(0);
@@ -301,54 +301,12 @@ int input_init(input_parameter *param, int plugin_no)
     
     if (settings->fps_set)
         pctx->capture.set(CV_CAP_PROP_FPS, settings->fps);
+#endif
+    pctx->filter_handle = NULL;
+    pctx->filter_ctx = NULL;
+    //pctx->filter_process = null_filter;
+    pctx->filter_free = NULL;
     
-    /* filter stuff goes here */
-    if (filter != NULL) {
-        
-        IPRINT("filter........... : %s\n", filter);
-        IPRINT("filter args ..... : %s\n", filter_args);
-        
-        pctx->filter_handle = dlopen(filter, RTLD_LAZY | RTLD_GLOBAL);
-        if(!pctx->filter_handle) {
-            LOG("ERROR: could not find input plugin\n");
-            LOG("       Perhaps you want to adjust the search path with:\n");
-            LOG("       # export LD_LIBRARY_PATH=/path/to/plugin/folder\n");
-            LOG("       dlopen: %s\n", dlerror());
-            goto fatal_error;
-        }
-        
-        pctx->filter_init = (filter_init_fn)dlsym(pctx->filter_handle, "filter_init");
-        if (pctx->filter_init == NULL) {
-            LOG("ERROR: %s\n", dlerror());
-            goto fatal_error;
-        }
-        
-        pctx->filter_process = (filter_process_fn)dlsym(pctx->filter_handle, "filter_process");
-        if (pctx->filter_process == NULL) {
-            LOG("ERROR: %s\n", dlerror());
-            goto fatal_error;
-        }
-        
-        pctx->filter_free = (filter_free_fn)dlsym(pctx->filter_handle, "filter_free");
-        if (pctx->filter_free == NULL) {
-            LOG("ERROR: %s\n", dlerror());
-            goto fatal_error;
-        }
-        
-        // optional functions
-        pctx->filter_init_frame = (filter_init_frame_fn)dlsym(pctx->filter_handle, "filter_init_frame");
-        
-        // initialize it
-        if (!pctx->filter_init(filter_args, &pctx->filter_ctx)) {
-            goto fatal_error;
-        }
-        
-    } else {
-        pctx->filter_handle = NULL;
-        pctx->filter_ctx = NULL;
-        pctx->filter_process = fff_process;
-        pctx->filter_free = NULL;
-    }
     
     return 0;
     
@@ -384,25 +342,30 @@ int input_run(int id)
 {
     input * in = &pglobal->in[id];
     context *pctx = (context*)in->context;
-    
     in->buf = NULL;
     in->size = 0;
-
-
+	rgb.create(HEIGHT_,WIDTH_,CV_8UC3);
+#ifdef USE_V4L2_NOT_CVCAPTRUE
+	open_device(PM.input_video_file,WIDTH_,HEIGHT_);
+	init_device();
+	start_capturing();
 	pthread_mutex_init(&mutex, NULL);
-
+#endif
 	
     if(pthread_create(&pctx->worker, 0, worker_thread, in) != 0) {
         worker_cleanup(in);
         fprintf(stderr, "could not start worker thread\n");
         exit(EXIT_FAILURE);
     }
-
+	
+#ifdef USE_V4L2_NOT_CVCAPTRUE
+		
 	pthread_t threads_dpm;
 	int rc = pthread_create(&threads_dpm, NULL, dpm_thread, NULL);
-	
+#endif
+
     pthread_detach(pctx->worker);
-	v_capture.release();
+
 
     return 0;
 }
@@ -458,32 +421,27 @@ void *worker_thread(void *arg)
 	Elapsed_Time_One_Frame = 0.0;
 	frame_cnt = 0;
 	Scalar drawColor = CV_RGB(255, 0, 0);
-	if (PM.is_save_result_video)
-	{
-		Size sWH = Size(IMG_WID_, IMG_HGT_);
-		bool ret = outputVideo.open(PM.result_video_file, CV_FOURCC('M', 'P', '4', '2'), PM.camera_fps, sWH);
-	}
+
 	
     while (!pglobal->stop) {
 		pthread_mutex_lock(&mutex);
-		if (!pctx->capture.read(src))
+
+#ifdef USE_V4L2_NOT_CVCAPTRUE
+		read_frame(rgb);
+#else
+		if (!pctx->capture.read(rgb))
             break; // TODO
-		
-		PM.draw_img(src, detections_full_current, drawColor, 1);
-		PM.draw_once(src, Elapsed_Time_One_Frame, frame_cnt);
+#endif
+		PM.draw_img(rgb, detections_full_current, drawColor, 1);
+		PM.draw_once(rgb, Elapsed_Time_One_Frame, frame_cnt);
 
 		pthread_mutex_unlock(&mutex);
-
-	
-        // call the filter function
-        //pctx->filter_process(src, dst);
-		//fff_process(src, dst);
 
         /* copy JPG picture to global buffer */
         pthread_mutex_lock(&in->db);
         
         // take whatever Mat it returns, and write it to jpeg buffer
-        imencode(".jpg", src, jpeg_buffer, compression_params);
+        imencode(".jpg", rgb, jpeg_buffer, compression_params);
         
         // TODO: what to do if imencode returns an error?
         
@@ -532,20 +490,22 @@ void *dpm_thread(void *threadarg)
 {
 	while (1)
 	{
-	printf("hhhh\n");
+	printTimesSecf();
+	printf("dpm_thread\n");
 	//waitKey(1000);
 
 		pthread_mutex_lock(&mutex);
-		if(src.empty())
+		if(rgb.empty())
 		{
 			pthread_mutex_unlock(&mutex);
 			continue;
 			waitKey(30);
 		}
 			
-		PM.img_frame = src;
+		PM.img_frame = rgb;
 		pthread_mutex_unlock(&mutex);
 
+		int start_t = getTimesSecf();
 
 		PM.init();
 		PM.detections_full_current.clear();
@@ -556,18 +516,19 @@ void *dpm_thread(void *threadarg)
 		PM.togetherAllBox(0);
 		PM.frame_cnt++;
 		PM.clear_bad_box();
+		int end_t =  getTimesSecf();
 
-
+		
 
 		pthread_mutex_lock(&mutex);
 		detections_full_current.clear();
 		detections_full_current.assign(PM.detections_full_current.begin(), PM.detections_full_current.end());
 		frame_cnt = PM.frame_cnt;
-		Elapsed_Time_One_Frame = PM.Elapsed_Time_One_Frame;
+		Elapsed_Time_One_Frame = end_t - start_t ;
 		pthread_mutex_unlock(&mutex);
 		if (quit)
 			pthread_exit(NULL);
-
+		
 	
 	}
 }

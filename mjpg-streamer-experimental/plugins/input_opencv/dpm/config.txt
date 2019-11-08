@@ -18,9 +18,9 @@ result_img_dir F:\dpm_data\inria_dpm\test\
 
 /////////使用视频输入////////////
 //F:\video_dataset\test0.avi
-input_video_file 0
-camera_width 320
-camera_height 240
+input_video_file /dev/video0
+camera_width 640
+camera_height 480
 camera_fps 25
 
 is_save_result_video 0

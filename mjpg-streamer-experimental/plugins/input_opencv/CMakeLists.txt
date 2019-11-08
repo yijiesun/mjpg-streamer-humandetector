@@ -10,7 +10,7 @@ if (PLUGIN_INPUT_OPENCV)
     enable_language(CXX)
     include_directories(${OpenCV_INCLUDE_DIRS})
 
-    MJPG_STREAMER_PLUGIN_COMPILE(input_opencv input_opencv.cpp fff/fff.cpp dpm/FastDPM.cpp
+    MJPG_STREAMER_PLUGIN_COMPILE(input_opencv input_opencv.cpp v4l_test.cpp dpm/FastDPM.cpp
 	dpm/loadPyramid.cpp
 	dpm/auxiliary/cvPrint.cpp
 	dpm/auxiliary/getCurrentTime.cpp
