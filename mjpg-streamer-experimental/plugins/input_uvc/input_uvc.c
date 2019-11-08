@@ -44,7 +44,7 @@
 
 #include "../../utils.h"
 #include "v4l2uvc.h" // this header will includes the ../../mjpg_streamer.h
-#define NO_LIBJPEG
+
 #ifndef NO_LIBJPEG
     #include "jpeg_utils.h"
     #include "huffman.h"
@@ -390,7 +390,6 @@ int input_init(input_parameter *param, int id)
            help();
            return 1;
       }
-		format = V4L2_PIX_FMT_YUYV;
     }
     DBG("input id: %d\n", id);
     pctx->id = id;
@@ -413,7 +412,6 @@ int input_init(input_parameter *param, int id)
             // Fall-through intentional
         case V4L2_PIX_FMT_JPEG:
             fmtString = "JPEG";
-			fmtString = "YUYV";
             break;
         #ifndef NO_LIBJPG
             case V4L2_PIX_FMT_YUYV:
@@ -775,21 +773,23 @@ void *cam_thread(void *arg)
              * Getting JPEGs straight from the webcam, is one of the major advantages of
              * Linux-UVC compatible devices.
              */
-           // #ifndef NO_LIBJPEG
-            if (1) {
-                //printf("compressing frame from input: %d\n", (int)pcontext->id);
+            #ifndef NO_LIBJPEG
+            if ((pcontext->videoIn->formatIn == V4L2_PIX_FMT_YUYV) ||
+            (pcontext->videoIn->formatIn == V4L2_PIX_FMT_UYVY) ||
+            (pcontext->videoIn->formatIn == V4L2_PIX_FMT_RGB565) ) {
+                DBG("compressing frame from input: %d\n", (int)pcontext->id);
                 pglobal->in[pcontext->id].size = compress_image_to_jpeg(pcontext->videoIn, pglobal->in[pcontext->id].buf, pcontext->videoIn->framesizeIn, quality);
                 /* copy this frame's timestamp to user space */
                 pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
             } else {
-            //#endif
-                printf("copying frame from input: %d\n", (int)pcontext->id);
+            #endif
+                DBG("copying frame from input: %d\n", (int)pcontext->id);
                 pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);
                 /* copy this frame's timestamp to user space */
                 pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
-           // #ifndef NO_LIBJPEG
+            #ifndef NO_LIBJPEG
             }
-            //#endif
+            #endif
 
 #if 0
             /* motion detection can be done just by comparing the picture size, but it is not very accurate!! */
@@ -921,5 +921,4 @@ int input_cmd(int plugin_number, unsigned int control_id, unsigned int group, in
     }
     return ret;
 }
-
 
