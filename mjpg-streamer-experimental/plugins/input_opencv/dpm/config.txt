@@ -1,0 +1,56 @@
+//F:\\model\\model_inriaperson.txt
+//F:\\voc\\voc-release5\\2007\\person_final500.txt
+model_file /home/pi/work/mjpg-streamer-master/INRIA_DPM_person_final.txt
+log_file /home/pi/work/mjpg-streamer-master/dpm.txt
+
+//大于此阈值视为检测到人形box -0.5f
+score_thresh -0.0f
+
+//图片水印字体大小 0.5
+font_size 1.0
+
+
+/////////使用图片输入////////////
+open_pic_not_video 0
+img_dir F:\dpm_data\inria_dpm\input\
+result_img_dir F:\dpm_data\inria_dpm\test\
+
+
+/////////使用视频输入////////////
+//F:\video_dataset\test0.avi
+input_video_file 0
+camera_width 320
+camera_height 240
+camera_fps 25
+
+is_save_result_video 0
+result_video_file /home/pi/work/mjpg-streamer-master/result_test11.avi
+is_use_knn 0
+//矩形重合度在此范围会被合并
+knn_over_percent 0.001f
+//single box 跟踪距离
+box_track_distance 18
+knn_roi_tmp_file F:\simic_data\nearRoi\
+
+//是否预测box轨迹
+is_predict_box 0
+//纯预测帧长度
+predict_dis 5
+
+
+
+// 0, 2, 1, 5, 0, 2, 4, 1, 3, 10
+//tooSmalltoDrop------------------------
+//useTopRect只使用前几个rec----------  |
+//内膨胀scale---------------------  |  |
+//内膨胀系数-------------------  |  |  |
+//输入视频起始帧------------  |  |  |  |
+//minContorsSize---------  |  |  |  |  |
+//KNN前景扩大/pix-----  |  |  |  |  |  |
+//判断为前景阈值---  |  |  |  |  |  |  |
+//KNN背景帧-----  |  |  |  |  |  |  |  |
+//纯背景帧--┐ |  |  |  |  |  |  |  |  |
+knn_bgs_set 0, 2, 1, 5, 0, 2, 4, 1, 5, 10
+
+
+
